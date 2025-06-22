@@ -1,5 +1,6 @@
 
 import streamlit as st
+import json
 
 st.set_page_config(page_title="Fairness Audit Playbook", layout="wide")
 # Playbook Title and Overview
@@ -119,6 +120,12 @@ elif page ==  "Historical Context Assessment":
     | Gender bias in performance reviews | High (3) | Medium (2) | Medium (2) | 7 – High Priority |
     | Indigenous language exclusion | High (3) | High (3) | High (3) | 9 – Critical Priority |
     """)
+    st.markdown("""
+    For each identified historical pattern Register Severity, Likelihood, Relevance, Score (S×L×R) and Priority
+) 
+""")
+    matrix = st.text_area("Risk Classification Matrix (Markdown table)", height=200)
+
 
     st.subheader("3. Usage Guide")
     st.markdown("""
@@ -167,6 +174,45 @@ elif page ==  "Historical Context Assessment":
     """)
 
     if st.button("Save HCA Summary"):
+        summary = {
+            "Structured Questionnaire": {
+                "Domain": q1,
+                "Function": q2,
+                "Historical Patterns": q3,
+                "Data Sources": q4,
+                "Category Definitions": q5,
+                "Measurement Risks": q6,
+                "Technology Transition - Prior Systems": q7,
+                "Technology Transition - Automation Risks": q8,
+                "Domain (Repeat)": q9,
+                "Function (Repeat)": q10,
+                "Historical Patterns (Repeat)": q11,
+                "Data Sources (Repeat)": q12,
+                "Category Definitions (Repeat)": q13,
+                "Measurement Risks (Repeat)": q14,
+                "Prior Systems": q15,
+                "Automation Risks": q16
+            },
+            "Risk Matrix": matrix
+        }
+        summary_md = "# Historical Context Assessment Summary\n"
+        # Questionnaire summary to markdown
+        for section, answers in summary["Structured Questionnaire"].items():
+            summary_md += f"**{section}:** {answers}\n\n"
+        summary_md += "## Risk Classification Matrix\n" + matrix + "\n"
+
+        # Display summary in app
+        st.subheader("HCA Summary Preview")
+        st.markdown(summary_md)
+        # Download button
+        st.download_button(
+            label="Download HCA Summary",
+            data=summary_md,
+            file_name="HCA_summary.md",
+            mime="text/markdown"
+        )
+        # Also print to console for debugging
+        print(json.dumps(summary, indent=2))
         st.success("Historical Context Assessment summary saved.")
 
 
@@ -188,36 +234,96 @@ elif page == "Fairness Definition Selection":
 
     st.subheader("2. Definition Selection Decision Tree")
     st.markdown("""
-    Follow these steps to select definitions efficiently based on your system’s context:
+    Follow these steps to select definitions efficiently based on your system’s context.
+    Select options below to determine the most appropriate fairness definitions for your system. You can print or save the results once completed.
 
     **Step 1: Historical Context Assessment**
-    - Did the HCA reveal systemic exclusion? → Include Demographic Parity.
+            """
+    )
+    exclusion = st.radio(
+    "Did the HCA reveal systemic exclusion of protected groups? → Include Demographic Parity.",
+    ("Yes", "No")
+    )
 
+    st.markdown("""
+                
     **Step 2: Error Impact Analysis**
+    """)
+    error_harm = st.radio("Which error type is more harmful in your context?",
+    ("False Negatives more harmful", "False Positives more harmful", "Both equally harmful", "Neither specific")
+    )
+    st.markdown("""
     - Are False Negatives more harmful? → Require Equal Opportunity.
     - Are False Positives more harmful? → Consider Predictive Equality.
     - Are both equally harmful? → Use Equalized Odds.
 
     **Step 3: Exposure of Probabilistic Scores**
-    - Will outputs be used as scores (e.g., risk scores, ranked results)?
-      → Add Calibration to ensure group-wise score consistency.
-
-    **Step 4: Feature Sensitivity Check**
-    - Are model inputs influenced by sensitive variables? → Consider Counterfactual Fairness.
     """)
+
+    score_usage = st.checkbox(
+    "Will outputs be used as scores (e.g., risk scores, ranked results)→ Add Calibration to ensure group-wise score consistency."
+    )
+    st.markdown("""
+    **Step 4: Feature Sensitivity Check**
+    """)
+    feature_sensitive = st.checkbox(
+    "Are model inputs influenced by sensitive attributes(e.g., proxies for protected groups)? → Consider Counterfactual Fairness.")
+                
+            # Determine Definitions
+    definitions = []
+    if exclusion == "Yes":
+        definitions.append("Demographic Parity")
+    if error_harm == "False Negatives more harmful":
+        definitions.append("Equal Opportunity")
+    elif error_harm == "False Positives more harmful":
+        definitions.append("Predictive Equality")
+    elif error_harm == "Both equally harmful":
+        definitions.append("Equalized Odds")
+    if score_usage:
+        definitions.append("Calibration")
+    if feature_sensitive:
+        definitions.append("Counterfactual Fairness")
+
+    # Display Results
+    st.subheader("Recommended Fairness Definitions")
+    if definitions:
+        for d in definitions:
+            st.markdown(f"- **{d}**")
+    else:
+        st.info("No definitions selected. Adjust the decision inputs above to generate recommendations.")
+
+    # Save & Print
+    if st.button("Save & Print Definition Selection"):
+        summary = {
+            "Systemic Exclusion": exclusion,
+            "Error Impact": error_harm,
+            "Score Usage": score_usage,
+            "Feature Sensitivity": feature_sensitive,
+            "Recommendations": definitions
+        }
+        summary_md = "# Fairness Definition Selection Summary\n"
+        for key, val in summary.items():
+            summary_md += f"**{key}:** {val}\n\n"
+        st.subheader("Definition Selection Summary Preview")
+        st.markdown(summary_md)
+        st.download_button(
+            label="Download FDS Summary",
+            data=summary_md,
+            file_name="FDS_summary.md",
+            mime="text/markdown"
+        )
+        print(json.dumps(summary, indent=2))
+
 
     st.subheader("3. Trade-Off Analysis Template (Customizable for Any Project)")
-    st.markdown("""
-    | Project | (e.g., Hiring System, Lending Platform, Language Translation) |
-    |---------|---------------------------------------------------------------|
-    | Historical Context | What historical patterns of exclusion or bias are relevant to this domain? |
-    | Selected Definitions | List the fairness definitions selected (e.g., Equal Opportunity) |
-    | Selection Rationale | Link your definition choice to system goals, stakeholder concerns, and historical context. |
-    | Considered But Not Used | List discarded definitions and why they were ruled out. |
-    | Trade-offs Acknowledged | What are you sacrificing or prioritizing in choosing this fairness definition? |
-    | Fairness Properties Not Met | List the fairness metrics this system will not satisfy and justify. |
-    | Monitoring Approach | Specify how and how often you will evaluate fairness post-deployment. |
-    """)
+    project = st.text_input("Project (e.g., Hiring System, Lending Platform, Language Translation)")
+    hist_context = st.text_area("Historical Context: What historical patterns of exclusion or bias are relevant to this domain?")
+    sel_defs = st.text_area("Selected Definitions:", value=", ".join(definitions))
+    rationale = st.text_area("Selection Rationale: Link your definition choice to system goals, stakeholder concerns, and historical context.")
+    discarded = st.text_area("Considered But Not Used: List discarded definitions and why they were ruled out.")
+    tradeoffs = st.text_area("Trade-offs Acknowledged: What are you sacrificing or prioritizing in choosing this fairness definition?")
+    not_met = st.text_area("Fairness Properties Not Met: List the fairness metrics this system will not satisfy and justify.")
+    monitoring = st.text_area("Monitoring Approach: Specify how and how often you will evaluate fairness post-deployment.")
 
     st.subheader("4. User Documentation")
     st.markdown("""
@@ -251,8 +357,35 @@ elif page == "Fairness Definition Selection":
     - Monthly audits monitor translation effectiveness and group-wise calibration.
     """)
 
-    if st.button("Save FDS Summary"):
-        st.success("Fairness Definition Selection summary saved.")
+    if st.button("Save & Print FDS Summary"):
+    
+        summary = {
+            "Systemic Exclusion": exclusion,
+            "Error Impact": error_harm,
+            "Score Usage": score_usage,
+            "Feature Sensitivity": feature_sensitive,
+            "Recommendations": definitions,
+            "Project": project,
+            "Historical Context": hist_context,
+            "Selected Definitions": sel_defs,
+            "Selection Rationale": rationale,
+            "Considered But Not Used": discarded,
+            "Trade-offs Acknowledged": tradeoffs,
+            "Fairness Properties Not Met": not_met,
+            "Monitoring Approach": monitoring
+        }
+        summary_md = "# Fairness Definition Selection & Trade-Off Summary\n"
+        for key, val in summary.items():
+            summary_md += f"**{key}:** {val}\n\n"
+        st.subheader("FDS Summary Preview")
+        st.markdown(summary_md)
+        st.download_button(
+            label="Download FDS & Trade-Off Summary",
+            data=summary_md,
+            file_name="FDS_Tradeoff_summary.md",
+            mime="text/markdown"
+        )
+        print(json.dumps(summary, indent=2))    st.success("Fairness Definition Selection summary saved.")
 
 elif page == "Bias Source Identification":
     st.header("Bias Source Identification Tool")
@@ -269,6 +402,13 @@ elif page == "Bias Source Identification":
     | Evaluation Bias | Testing doesn’t reflect deployment reality. | Evaluation excludes elder dialects. |
     | Deployment Bias | Model used in unintended contexts. | Trained on formal speech, used informally. |
     """)
+        # 1. Bias Taxonomy
+    bias_types=["Historical Bias","Representation Bias","Measurement Bias","Aggregation Bias","Learning Bias","Evaluation Bias","Deployment Bias"]
+    selected_bias=st.multiselect("Select Bias Types to Assess", bias_types)
+    taxonomy={}  
+    for b in selected_bias:
+        taxonomy[b]=st.text_input(f"Example for {b}")
+    # 2. Detection Methodology
 
     st.subheader("2. Detection Methodology")
     st.markdown("""
@@ -283,6 +423,11 @@ elif page == "Bias Source Identification":
 
     Begin with lightweight analysis. Use expert review only when automated methods are insufficient.
     """)
+    st.subheader("2. Detection Methodology")
+    methods={}
+    for b in selected_bias:
+        methods[b]=st.text_area(f"Detection method for {b}")
+
 
     st.subheader("3. Prioritization Framework")
     st.markdown("""
@@ -291,6 +436,31 @@ elif page == "Bias Source Identification":
     | Measurement Bias | 5 | 4 | 4 | 5 | 3 | 4.4 |
     | Deployment Bias | 4 | 5 | 4 | 5 | 4 | 4.4 |
     """)
+
+    st.markdown("Assign scores (1-5) for each selected bias type:")
+    scores={}
+    for b in selected_bias:
+        cols=st.columns(6)
+        sev=cols[0].number_input(f"{b} - Severity",1,5,3,key=f"{b}_sev")
+        scp=cols[1].number_input(f"{b} - Scope",1,5,3,key=f"{b}_scp")
+        per=cols[2].number_input(f"{b} - Persistence",1,5,3,key=f"{b}_per")
+        hal=cols[3].number_input(f"{b} - Hist Align",1,5,3,key=f"{b}_hal")
+        fea=cols[4].number_input(f"{b} - Feasibility",1,5,3,key=f"{b}_fea")
+        score=round((sev+scp+per+hal+fea)/5,2)
+        cols[5].markdown(f"**Score:** {score}")
+        scores[b]=score
+    # Save & Print
+    if st.button("Save & Print BSI Summary"):
+        summary={"Taxonomy":taxonomy, "Detection":methods, "Scores":scores}
+        smd="# Bias Source Identification Summary\n"
+        for section, content in summary.items():
+            smd+=f"## {section}\n"
+            for k,v in content.items(): smd+=f"- **{k}:** {v}\n"
+            smd+="\n"
+        st.subheader("BSI Summary Preview")
+        st.markdown(smd)
+        st.download_button("Download BSI Summary", data=smd, file_name="BSI_summary.md", mime="text/markdown")
+        print(json.dumps(summary, indent=2))
 
     st.subheader("4. User Documentation")
     st.markdown("""
@@ -324,7 +494,7 @@ elif page == "Comprehensive Fairness Metrics":
 
     st.subheader("1. Purpose and Connection")
     st.markdown("""
-    This section complements the Historical Context Assessment, Fairness Definition Selection, and Bias Source Identification tools...
+    This section complements the Historical Context Assessment, Fairness Definition Selection, and Bias Source Identification tools
     """)
 
     st.markdown("""
@@ -340,6 +510,16 @@ elif page == "Comprehensive Fairness Metrics":
     - **Demographic Parity (Classification)** → Demographic Parity Difference
     - **Exposure Parity (Ranking)** → Exposure Ratio
     """)
+
+    problem_type = st.selectbox("Problem Type", ["Classification","Regression","Ranking"])
+    options = []
+    if problem_type == "Classification":
+        options = ["TPR Difference","FPR Difference","Equalized Odds","Demographic Parity"]
+    elif problem_type == "Regression":
+        options = ["Group Outcome Difference","Group Error Ratio","Residual Disparities"]
+    else:
+        options = ["Exposure Parity","Representation Ratio","Rank-Consistency Score"]
+    selected_metrics = st.multiselect("Select Fairness Metrics", options)
 
     st.subheader("2. Statistical Validation")
     st.markdown("""
@@ -365,6 +545,10 @@ elif page == "Comprehensive Fairness Metrics":
     - Use color gradients for disparity magnitude.
     - Adjust cell size/opacity based on sample size.
     """)
+
+    bootstrap = st.checkbox("Use bootstrap for confidence intervals?")
+    bayesian = st.checkbox("Use Bayesian methods for small samples (< threshold)?")
+    small_threshold = st.number_input("Small sample threshold", min_value=1, value=100)
 
     st.subheader("4. User Documentation")
     st.markdown("""
@@ -398,3 +582,50 @@ elif page == "Comprehensive Fairness Metrics":
     - Bar charts show larger disparities in rural Quechua speakers.
     - Heatmap reveals issues at intersection of age + language.
     """)
+
+    st.subheader("Visualization Templates")
+    viz_bar = st.checkbox("Include Fairness Disparity Chart")
+    viz_heatmap = st.checkbox("Include Intersectional Heatmap")
+    viz_other = st.text_area("Other visualization templates")
+
+    st.subheader("Case Study: Language Translation Tool Template")
+    st.markdown("**Context:** Indigenous-to-Spanish translation for public services.")
+    tpr = st.number_input("TPR Difference", value=0.0)
+    fnr = st.number_input("FNR Difference", value=0.0)
+    calib = st.number_input("Calibration Slope", value=0.0)
+    inter_gap = st.number_input("Intersectional Gap (TPR)", value=0.0)
+
+    if st.button("Save & Print CFM Summary"):
+        summary = {
+            "Problem Type": problem_type,
+            "Selected Metrics": selected_metrics,
+            "Bootstrap CI": bootstrap,
+            "Bayesian Methods": bayesian,
+            "Small Sample Threshold": small_threshold,
+            "Visualization": {
+                "Bar Chart": viz_bar,
+                "Heatmap": viz_heatmap,
+                "Other": viz_other
+            },
+            "Case Study Metrics": {
+                "TPR Difference": tpr,
+                "FNR Difference": fnr,
+                "Calibration Slope": calib,
+                "Intersectional Gap": inter_gap
+            }
+        }
+        md = "# CFM Summary\n"
+        for k,v in summary.items():
+            if isinstance(v, dict):
+                md += f"## {k}\n"
+                for subk, subv in v.items(): md += f"- **{subk}:** {subv}\n"
+            else:
+                md += f"**{k}:** {v}\n"
+            md += "\n"
+        st.subheader("CFM Summary Preview")
+        st.markdown(md)
+        st.download_button("Download CFM Summary", data=md, file_name="CFM_summary.md", mime="text/markdown")
+        print(json.dumps(summary, indent=2))
+
+else:
+    st.info("Select a section from the sidebar to begin.")
