@@ -385,7 +385,8 @@ elif page == "Fairness Definition Selection":
             file_name="FDS_Tradeoff_summary.md",
             mime="text/markdown"
         )
-        print(json.dumps(summary, indent=2))    st.success("Fairness Definition Selection summary saved.")
+        print(json.dumps(summary, indent=2))    
+        st.success("Fairness Definition Selection summary saved.")
 
 elif page == "Bias Source Identification":
     st.header("Bias Source Identification Tool")
