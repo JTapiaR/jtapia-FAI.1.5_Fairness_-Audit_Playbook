@@ -1477,12 +1477,14 @@ def complete_integration_example():
     """)
     
     st.code("""
-    # Complete integration pipeline
-    def integrated_fairness_pipeline(data_path, config):
+# Complete integration pipeline
+def integrated_fairness_pipeline(data_path, config):
     # Phase 1: Audit
+    # (Assumes run_fairness_audit is defined below or elsewhere)
     audit_results = run_fairness_audit(data_path, config)
     
     # Phase 2: Load and analyze data
+    # (Assumes these functions are defined elsewhere)
     X, y, sensitive_attr = load_data(data_path)
     bias_analysis = analyze_dataset_bias(X, y, sensitive_attr)
     
@@ -1490,39 +1492,48 @@ def complete_integration_example():
     if audit_results['requires_resampling']:
         if bias_analysis['imbalance_ratio'] > 5:
             # High imbalance - use SMOTE
+            # (Assumes preprocessing_smote is defined elsewhere)
             X, y, sensitive_attr = preprocessing_smote(X, y, sensitive_attr)
         else:
             # Moderate imbalance - use oversampling
+            # (Assumes apply_oversampling is defined elsewhere)
             X, y = apply_oversampling(X, y)
     
     if audit_results['requires_reweighting']:
+        # (Assumes apply_reweighting is defined elsewhere)
         sample_weights = apply_reweighting(X, y)
     else:
         sample_weights = None
     
     # Phase 4: Train with fairness constraints
-    model = train_fair_model(X, y, sensitive_attr, 
+    # (Assumes train_fair_model is defined elsewhere)
+    model = train_fair_model(X, y, sensitive_attr,
                            fairness_def=audit_results['selected_fairness_def'],
                            sample_weight=sample_weights)
     
     # Phase 5: Post-process if needed
     if audit_results['requires_post_processing']:
+        # (Assumes apply_threshold_optimization is defined elsewhere)
         model = apply_threshold_optimization(model, X, y, sensitive_attr)
     
     # Phase 6: Validate
+    # (Assumes validate_complete_fairness is defined elsewhere)
     fairness_metrics = validate_complete_fairness(model, X, y, sensitive_attr)
     
     return model, fairness_metrics
 
 def run_fairness_audit(data_path, config):
-    """Run the audit playbook programmatically"""
+    \"\"\"Run the audit playbook programmatically\"\"\"
     # Historical context assessment
+    # (Assumes assess_historical_context is defined elsewhere)
     hca_results = assess_historical_context(config['domain'])
     
     # Fairness definition selection
+    # (Assumes select_fairness_definition is defined elsewhere)
     fairness_def = select_fairness_definition(hca_results, config['use_case'])
     
     # Bias source identification
+    # (Assumes identify_bias_sources is defined elsewhere)
     bias_sources = identify_bias_sources(data_path, hca_results)
     
     return {
