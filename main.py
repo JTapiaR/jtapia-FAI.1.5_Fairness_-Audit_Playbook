@@ -2341,10 +2341,11 @@ def audit_playbook():
 
 
 # --- NAVEGACIÓN PRINCIPAL ---
+# --- CORRECTED CODE ---
 st.sidebar.title("Playbook Selection")
 playbook_choice = st.sidebar.selectbox(
     "Choose the toolkit you want to use:",
-    ["Fairness Audit Playbook", "Fairness Intervention Playbook","Bias Mitigation Techniques","Complete Integration Example" ]
+    ["Fairness Audit Playbook", "Fairness Intervention Playbook", "Bias Mitigation Techniques", "Complete Integration Example"]
 )
 
 st.title(playbook_choice)
@@ -2352,6 +2353,9 @@ st.title(playbook_choice)
 if playbook_choice == "Fairness Audit Playbook":
     audit_playbook()
 elif playbook_choice == "Fairness Intervention Playbook":
-    intervention_playbook()     
+    intervention_playbook()
 elif playbook_choice == "Bias Mitigation Techniques":
     bias_mitigation_techniques_toolkit()
+# ADD THIS BLOCK
+elif playbook_choice == "Complete Integration Example":
+    complete_integration_example()
