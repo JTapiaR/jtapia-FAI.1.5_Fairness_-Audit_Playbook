@@ -855,7 +855,7 @@ if __name__ == "__main__":
     fair_model, X_fair, y_fair = complete_bias_mitigation_pipeline(X, y, sensitive_attr)
         """, language="python")
         
-        st.text_area("Apply to your case: How would you adapt SMOTE for your specific data type?", 
+    st.text_area("Apply to your case: How would you adapt SMOTE for your specific data type?", 
                      placeholder="Example: For our tabular medical data, we'll use SMOTE with k=5 neighbors and focus on generating synthetic samples for rare disease cases, ensuring clinical realism by constraining feature ranges.", 
                      key="smote_plan")
 
