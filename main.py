@@ -5,6 +5,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LogisticRegression
 from sklearn.isotonic import IsotonicRegression
+from sklearn.utils import resample
+from sklearn.utils.class_weight import compute_class_weight
+from sklearn.cluster import KMeans
+from imblearn.over_sampling import SMOTE
+from collections import Counter
+import seaborn as sns
 
 # --- Configuración de la Página ---
 st.set_page_config(
@@ -198,6 +204,702 @@ def run_did_simulation():
 
     effect = treat_outcomes[1] - counterfactual[1]
     st.info(f"The dashed line shows the 'parallel trend' the treatment group would have followed without intervention. The vertical difference between the solid red line and the dashed line in the 'After' period is the treatment effect, estimated at **{effect}** units.")
+
+def bias_mitigation_techniques_toolkit():
+    """New toolkit for bias mitigation techniques"""
+    st.header("🔧 Bias Mitigation Techniques Toolkit")
+    
+    with st.expander("🔍 Friendly Definition"):
+        st.write("""
+        **Bias Mitigation Techniques** are practical methods to balance your dataset before training. 
+        Think of them as different ways to ensure all voices are heard equally in your data - 
+        some by amplifying quiet voices (oversampling), others by moderating loud ones (undersampling), 
+        and some by creating synthetic but realistic examples (SMOTE).
+        """)
+
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        "Resampling Techniques", "Reweighting", "Data Augmentation", 
+        "Fair Clustering", "SMOTE", "Interactive Comparison"
+    ])
+
+    # TAB 1: Resampling Techniques
+    with tab1:
+        st.subheader("Resampling Techniques")
+        
+        with st.expander("💡 Interactive Oversampling Simulation"):
+            st.write("See how oversampling balances an imbalanced dataset")
+            
+            # Generate sample data
+            np.random.seed(42)
+            majority_size = st.slider("Majority group size", 100, 1000, 800, key="maj_size")
+            minority_size = st.slider("Minority group size", 50, 500, 200, key="min_size")
+            
+            # Original distribution
+            original_ratio = minority_size / (majority_size + minority_size)
+            
+            # After oversampling
+            target_ratio = st.radio("Target balance", ["50-50", "60-40", "70-30"], key="target_balance")
+            if target_ratio == "50-50":
+                new_minority_size = majority_size
+            elif target_ratio == "60-40":
+                new_minority_size = int(majority_size * 0.67)
+            else:  # 70-30
+                new_minority_size = int(majority_size * 0.43)
+            
+            # Visualization
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+            
+            # Original
+            ax1.bar(['Majority', 'Minority'], [majority_size, minority_size], 
+                   color=['lightblue', 'lightcoral'])
+            ax1.set_title(f"Original Dataset\nRatio: {original_ratio:.1%} minority")
+            ax1.set_ylabel("Sample Count")
+            
+            # After oversampling
+            ax2.bar(['Majority', 'Minority'], [majority_size, new_minority_size], 
+                   color=['lightblue', 'lightcoral'])
+            ax2.set_title(f"After Oversampling\nRatio: {new_minority_size/(majority_size+new_minority_size):.1%} minority")
+            ax2.set_ylabel("Sample Count")
+            
+            st.pyplot(fig)
+            
+            # Show replication factor
+            replication_factor = new_minority_size / minority_size
+            st.info(f"Replication factor: {replication_factor:.1f}x (each minority sample duplicated {replication_factor:.1f} times)")
+
+        st.code("""
+# Oversampling implementation
+from sklearn.utils import resample
+
+def apply_oversampling(data, target_column, minority_class):
+    majority = data[data[target_column] != minority_class]
+    minority = data[data[target_column] == minority_class]
+    
+    # Oversample minority class
+    minority_upsampled = resample(minority, 
+                                 replace=True,
+                                 n_samples=len(majority),
+                                 random_state=42)
+    
+    # Combine majority and upsampled minority
+    return pd.concat([majority, minority_upsampled])
+        """, language="python")
+
+        st.text_area("Apply to your case: Which resampling strategy fits your problem?", 
+                     placeholder="Example: Our hiring dataset has 80% male candidates. We'll use oversampling to reach 60-40 balance, avoiding perfect balance to maintain some realism.", 
+                     key="resample_plan")
+
+    # TAB 2: Reweighting
+    with tab2:
+        st.subheader("Sample Reweighting")
+        
+        with st.expander("💡 Interactive Weighting Simulation"):
+            st.write("See how different weighting strategies affect model training focus")
+            
+            # Sample fraud detection scenario
+            legitimate_pct = st.slider("Percentage of legitimate transactions", 80, 99, 95, key="legit_pct")
+            fraud_pct = 100 - legitimate_pct
+            
+            # Calculate inverse weights
+            weight_legit = 1 / (legitimate_pct / 100)
+            weight_fraud = 1 / (fraud_pct / 100)
+            
+            # Visualization
+            fig, ax = plt.subplots()
+            categories = ['Legitimate', 'Fraudulent']
+            percentages = [legitimate_pct, fraud_pct]
+            weights = [weight_legit, weight_fraud]
+            
+            x = np.arange(len(categories))
+            width = 0.35
+            
+            ax.bar(x - width/2, percentages, width, label='Data Percentage', color='lightblue')
+            ax.bar(x + width/2, weights, width, label='Assigned Weight', color='lightcoral')
+            
+            ax.set_ylabel('Value')
+            ax.set_title('Data Distribution vs. Assigned Weights')
+            ax.set_xticks(x)
+            ax.set_xticklabels(categories)
+            ax.legend()
+            
+            # Add value labels on bars
+            for i, (pct, wt) in enumerate(zip(percentages, weights)):
+                ax.text(i - width/2, pct + 1, f'{pct}%', ha='center')
+                ax.text(i + width/2, wt + 0.1, f'{wt:.1f}', ha='center')
+            
+            st.pyplot(fig)
+            st.info(f"Fraudulent cases get {weight_fraud:.1f}x more weight, making the model pay {weight_fraud:.1f}x more attention to errors in fraud detection.")
+
+        st.code("""
+# Reweighting implementation
+from sklearn.utils.class_weight import compute_class_weight
+
+def apply_reweighting(X, y):
+    # Calculate balanced weights automatically
+    weights = compute_class_weight('balanced', 
+                                  classes=np.unique(y), 
+                                  y=y)
+    
+    # Create sample weights array
+    sample_weights = np.array([weights[label] for label in y])
+    
+    return sample_weights
+
+# Usage in training
+sample_weights = apply_reweighting(X_train, y_train)
+model.fit(X_train, y_train, sample_weight=sample_weights)
+        """, language="python")
+
+        st.text_area("Apply to your case: What imbalance will you address with reweighting?", 
+                     placeholder="Example: Our medical diagnosis dataset has only 3% positive cases. We'll use inverse frequency weighting to ensure the model doesn't ignore rare diseases.", 
+                     key="reweight_plan")
+
+    # TAB 3: Data Augmentation
+    with tab3:
+        st.subheader("Data Augmentation for Fairness")
+        
+        with st.expander("💡 Interactive Augmentation Visualization"):
+            st.write("See how data augmentation can expand underrepresented groups")
+            
+            augmentation_factor = st.slider("Augmentation factor for minority group", 1, 10, 5, key="aug_factor")
+            
+            # Original small group
+            np.random.seed(1)
+            original_samples = 20
+            augmented_samples = original_samples * augmentation_factor
+            
+            # Simulate feature distributions
+            original_data = np.random.multivariate_normal([2, 3], [[1, 0.5], [0.5, 1]], original_samples)
+            
+            # Simulate augmented data (with slight variations)
+            augmented_data = []
+            for _ in range(augmented_samples - original_samples):
+                # Add noise to simulate realistic augmentation
+                base_sample = original_data[np.random.randint(0, original_samples)]
+                augmented_sample = base_sample + np.random.normal(0, 0.3, 2)
+                augmented_data.append(augmented_sample)
+            
+            if augmented_data:
+                augmented_data = np.array(augmented_data)
+                combined_data = np.vstack([original_data, augmented_data])
+            else:
+                combined_data = original_data
+            
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+            
+            # Original
+            ax1.scatter(original_data[:, 0], original_data[:, 1], 
+                       c='blue', alpha=0.7, s=50)
+            ax1.set_title(f"Original Minority Group\n(n={original_samples})")
+            ax1.set_xlabel("Feature 1")
+            ax1.set_ylabel("Feature 2")
+            ax1.grid(True, alpha=0.3)
+            
+            # Augmented
+            ax2.scatter(original_data[:, 0], original_data[:, 1], 
+                       c='blue', alpha=0.7, s=50, label='Original')
+            if len(augmented_data) > 0:
+                ax2.scatter(augmented_data[:, 0], augmented_data[:, 1], 
+                           c='red', alpha=0.5, s=30, marker='x', label='Augmented')
+            ax2.set_title(f"After Augmentation\n(n={len(combined_data)})")
+            ax2.set_xlabel("Feature 1")
+            ax2.set_ylabel("Feature 2")
+            ax2.legend()
+            ax2.grid(True, alpha=0.3)
+            
+            st.pyplot(fig)
+            st.info(f"Data augmentation increased the minority group from {original_samples} to {len(combined_data)} samples, helping the model learn their patterns better.")
+
+        st.code("""
+# Data Augmentation for Images
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+
+def setup_image_augmentation():
+    datagen = ImageDataGenerator(
+        rotation_range=15,           # Rotate ±15 degrees
+        brightness_range=[0.8, 1.2], # Adjust brightness
+        zoom_range=0.1,              # Zoom in/out
+        horizontal_flip=True,        # Mirror horizontally
+        width_shift_range=0.1,       # Shift horizontally
+        height_shift_range=0.1       # Shift vertically
+    )
+    return datagen
+
+# Generate augmented data
+def augment_minority_group(images, labels, minority_label, target_count):
+    minority_mask = labels == minority_label
+    minority_images = images[minority_mask]
+    
+    datagen = setup_image_augmentation()
+    augmented_images = []
+    
+    current_count = len(minority_images)
+    needed_count = target_count - current_count
+    
+    for batch in datagen.flow(minority_images, batch_size=32):
+        augmented_images.extend(batch)
+        if len(augmented_images) >= needed_count:
+            break
+    
+    return np.array(augmented_images[:needed_count])
+        """, language="python")
+
+        st.text_area("Apply to your case: What augmentation strategy would work for your data type?", 
+                     placeholder="Example: For our facial recognition system, we'll apply rotation, lighting changes, and background substitution to increase representation of underrepresented ethnic groups.", 
+                     key="augment_plan")
+
+    # TAB 4: Fair Clustering
+    with tab4:
+        st.subheader("Fair Clustering Techniques")
+        
+        with st.expander("💡 Interactive Fair Clustering Demo"):
+            st.write("Compare traditional clustering vs. fair clustering that ensures balanced representation")
+            
+            # Generate sample data with bias
+            np.random.seed(10)
+            group_a = np.random.multivariate_normal([2, 2], [[1, 0.3], [0.3, 1]], 80)
+            group_b = np.random.multivariate_normal([6, 6], [[1, 0.3], [0.3, 1]], 20)
+            
+            all_data = np.vstack([group_a, group_b])
+            group_labels = ['A'] * 80 + ['B'] * 20
+            
+            n_clusters = st.slider("Number of clusters", 2, 5, 3, key="fair_clusters")
+            
+            # Traditional clustering
+            kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+            traditional_clusters = kmeans.fit_predict(all_data)
+            
+            # Simulate fair clustering (simplified version)
+            fair_clusters = traditional_clusters.copy()
+            for cluster_id in range(n_clusters):
+                cluster_mask = traditional_clusters == cluster_id
+                cluster_groups = np.array(group_labels)[cluster_mask]
+                
+                # If cluster is very imbalanced, reassign some points
+                group_a_pct = np.mean(cluster_groups == 'A')
+                if group_a_pct > 0.9:  # Too many A's
+                    # Find B points to reassign to this cluster
+                    b_points = np.where((np.array(group_labels) == 'B') & (traditional_clusters != cluster_id))[0]
+                    if len(b_points) > 0:
+                        fair_clusters[b_points[:2]] = cluster_id
+                elif group_a_pct < 0.1:  # Too many B's
+                    # Find A points to reassign
+                    a_points = np.where((np.array(group_labels) == 'A') & (traditional_clusters != cluster_id))[0]
+                    if len(a_points) > 0:
+                        fair_clusters[a_points[:2]] = cluster_id
+            
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+            
+            # Traditional clustering
+            colors_trad = ['red', 'blue', 'green', 'purple', 'orange']
+            for i in range(n_clusters):
+                cluster_points = all_data[traditional_clusters == i]
+                if len(cluster_points) > 0:
+                    ax1.scatter(cluster_points[:, 0], cluster_points[:, 1], 
+                               c=colors_trad[i], alpha=0.7, label=f'Cluster {i}')
+            ax1.set_title("Traditional K-Means Clustering")
+            ax1.set_xlabel("Feature 1")
+            ax1.set_ylabel("Feature 2")
+            ax1.legend()
+            ax1.grid(True, alpha=0.3)
+            
+            # Fair clustering
+            for i in range(n_clusters):
+                cluster_points = all_data[fair_clusters == i]
+                if len(cluster_points) > 0:
+                    ax2.scatter(cluster_points[:, 0], cluster_points[:, 1], 
+                               c=colors_trad[i], alpha=0.7, label=f'Cluster {i}')
+            ax2.set_title("Fair Clustering (Balanced)")
+            ax2.set_xlabel("Feature 1")
+            ax2.set_ylabel("Feature 2")
+            ax2.legend()
+            ax2.grid(True, alpha=0.3)
+            
+            st.pyplot(fig)
+            
+            # Show balance metrics
+            st.write("#### Cluster Balance Analysis")
+            for i in range(n_clusters):
+                trad_mask = traditional_clusters == i
+                fair_mask = fair_clusters == i
+                
+                if np.sum(trad_mask) > 0 and np.sum(fair_mask) > 0:
+                    trad_a_pct = np.mean(np.array(group_labels)[trad_mask] == 'A')
+                    fair_a_pct = np.mean(np.array(group_labels)[fair_mask] == 'A')
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric(f"Cluster {i} - Traditional", f"{trad_a_pct:.1%} Group A")
+                    with col2:
+                        st.metric(f"Cluster {i} - Fair", f"{fair_a_pct:.1%} Group A", 
+                                 delta=f"{fair_a_pct - trad_a_pct:+.1%}")
+
+        st.code("""
+# Fair Clustering Implementation
+def fair_clustering(X, sensitive_features, n_clusters, balance_threshold=0.3):
+    # Initial clustering
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+    initial_clusters = kmeans.fit_predict(X)
+    
+    # Check and adjust for fairness
+    for cluster_id in range(n_clusters):
+        cluster_mask = initial_clusters == cluster_id
+        cluster_sensitive = sensitive_features[cluster_mask]
+        
+        # Calculate group proportions in cluster
+        unique_groups, counts = np.unique(cluster_sensitive, return_counts=True)
+        proportions = counts / len(cluster_sensitive)
+        
+        # If cluster is imbalanced beyond threshold
+        if np.max(proportions) > (1 - balance_threshold):
+            # Reassign some points to achieve better balance
+            initial_clusters = rebalance_cluster(initial_clusters, cluster_id, 
+                                               sensitive_features, balance_threshold)
+    
+    return initial_clusters
+
+def rebalance_cluster(clusters, cluster_id, sensitive_features, threshold):
+    # Implementation of rebalancing logic
+    # (This would involve finding appropriate points to reassign)
+    return clusters
+        """, language="python")
+
+    # TAB 5: SMOTE
+    with tab5:
+        st.subheader("SMOTE (Synthetic Minority Oversampling Technique)")
+        
+        with st.expander("💡 Interactive SMOTE Visualization"):
+            st.write("See how SMOTE creates synthetic samples by interpolating between existing minority samples")
+            
+            # Generate sample minority data
+            np.random.seed(5)
+            minority_samples = np.random.multivariate_normal([4, 4], [[1, 0.5], [0.5, 1]], 15)
+            majority_samples = np.random.multivariate_normal([1, 1], [[1, 0.2], [0.2, 1]], 85)
+            
+            # Simulate SMOTE process
+            k_neighbors = st.slider("Number of neighbors for SMOTE", 1, 5, 3, key="smote_k")
+            synthetic_count = st.slider("Synthetic samples to generate", 10, 50, 25, key="smote_count")
+            
+            # Create synthetic samples (simplified SMOTE simulation)
+            synthetic_samples = []
+            for _ in range(synthetic_count):
+                # Pick a random minority sample
+                base_idx = np.random.randint(0, len(minority_samples))
+                base_sample = minority_samples[base_idx]
+                
+                # Find k nearest neighbors
+                distances = np.linalg.norm(minority_samples - base_sample, axis=1)
+                neighbor_indices = np.argsort(distances)[1:k_neighbors+1]
+                
+                # Pick a random neighbor and interpolate
+                neighbor_idx = np.random.choice(neighbor_indices)
+                neighbor_sample = minority_samples[neighbor_idx]
+                
+                # Linear interpolation
+                alpha = np.random.random()
+                synthetic_sample = base_sample + alpha * (neighbor_sample - base_sample)
+                synthetic_samples.append(synthetic_sample)
+            
+            synthetic_samples = np.array(synthetic_samples)
+            
+            fig, ax = plt.subplots(figsize=(10, 8))
+            
+            # Plot original data
+            ax.scatter(majority_samples[:, 0], majority_samples[:, 1], 
+                      c='lightblue', alpha=0.6, s=50, label=f'Majority (n={len(majority_samples)})')
+            ax.scatter(minority_samples[:, 0], minority_samples[:, 1], 
+                      c='red', alpha=0.8, s=80, label=f'Minority Original (n={len(minority_samples)})')
+            
+            # Plot synthetic samples
+            ax.scatter(synthetic_samples[:, 0], synthetic_samples[:, 1], 
+                      c='orange', alpha=0.7, s=60, marker='x', 
+                      label=f'Synthetic (n={len(synthetic_samples)})')
+            
+            # Draw lines between some original points to show interpolation
+            for i in range(min(5, len(synthetic_samples))):
+                # Find closest original points to show interpolation
+                distances_to_orig = np.linalg.norm(minority_samples - synthetic_samples[i], axis=1)
+                closest_indices = np.argsort(distances_to_orig)[:2]
+                
+                ax.plot([minority_samples[closest_indices[0], 0], synthetic_samples[i, 0]], 
+                       [minority_samples[closest_indices[0], 1], synthetic_samples[i, 1]], 
+                       'gray', alpha=0.3, linestyle='--')
+                ax.plot([minority_samples[closest_indices[1], 0], synthetic_samples[i, 0]], 
+                       [minority_samples[closest_indices[1], 1], synthetic_samples[i, 1]], 
+                       'gray', alpha=0.3, linestyle='--')
+            
+            ax.set_title("SMOTE: Synthetic Sample Generation")
+            ax.set_xlabel("Feature 1")
+            ax.set_ylabel("Feature 2")
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+            
+            st.pyplot(fig)
+            st.info("Synthetic samples (orange X's) are created by interpolating between original minority samples (red dots). The dashed lines show some interpolation paths.")
+
+        st.code("""
+# SMOTE Implementation
+from imblearn.over_sampling import SMOTE
+
+def apply_smote(X, y, sampling_strategy='auto'):
+    # Initialize SMOTE
+    smote = SMOTE(sampling_strategy=sampling_strategy, 
+                  random_state=42,
+                  k_neighbors=5)
+    
+    # Apply SMOTE
+    X_resampled, y_resampled = smote.fit_resample(X, y)
+    
+    # Show before/after distribution
+    print("Original distribution:", Counter(y))
+    print("After SMOTE:", Counter(y_resampled))
+    
+    return X_resampled, y_resampled
+
+# Usage example
+X_balanced, y_balanced = apply_smote(X_train, y_train)
+
+# For multi-class with specific strategy
+smote_strategy = {0: 100, 1: 200}  # Specific target counts
+X_balanced, y_balanced = apply_smote(X_train, y_train, smote_strategy)
+        """, language="python")
+
+    # TAB 6: Interactive Comparison
+    with tab6:
+        st.subheader("Technique Comparison Tool")
+        
+        st.write("Compare different bias mitigation techniques on a simulated dataset")
+        
+        # Dataset parameters
+        col1, col2 = st.columns(2)
+        with col1:
+            majority_size = st.number_input("Majority group size", 100, 2000, 800, key="comp_maj")
+            minority_size = st.number_input("Minority group size", 20, 500, 150, key="comp_min")
+        with col2:
+            target_balance = st.selectbox("Target balance", ["50-50", "60-40", "70-30"], key="comp_balance")
+            techniques = st.multiselect("Select techniques to compare", 
+                                       ["Oversampling", "Undersampling", "Reweighting", "SMOTE"], 
+                                       default=["Oversampling", "SMOTE"], key="comp_techniques")
+        
+        if techniques:
+            results = {}
+            
+            # Calculate results for each technique
+            if "Oversampling" in techniques:
+                if target_balance == "50-50":
+                    new_minority = majority_size
+                elif target_balance == "60-40":
+                    new_minority = int(majority_size * 0.67)
+                else:  # 70-30
+                    new_minority = int(majority_size * 0.43)
+                
+                results["Oversampling"] = {
+                    "Final Majority": majority_size,
+                    "Final Minority": new_minority,
+                    "Total Samples": majority_size + new_minority,
+                    "Information Loss": "None",
+                    "Overfitting Risk": "Medium" if new_minority > minority_size * 3 else "Low"
+                }
+            
+            if "Undersampling" in techniques:
+                new_majority = minority_size
+                results["Undersampling"] = {
+                    "Final Majority": new_majority,
+                    "Final Minority": minority_size,
+                    "Total Samples": new_majority + minority_size,
+                    "Information Loss": f"{((majority_size - new_majority) / majority_size * 100):.1f}%",
+                    "Overfitting Risk": "Low"
+                }
+            
+            if "Reweighting" in techniques:
+                weight_ratio = majority_size / minority_size
+                results["Reweighting"] = {
+                    "Final Majority": majority_size,
+                    "Final Minority": minority_size,
+                    "Total Samples": majority_size + minority_size,
+                    "Minority Weight": f"{weight_ratio:.1f}x",
+                    "Information Loss": "None"
+                }
+            
+            if "SMOTE" in techniques:
+                synthetic_needed = max(0, majority_size - minority_size)
+                results["SMOTE"] = {
+                    "Final Majority": majority_size,
+                    "Final Minority": minority_size + synthetic_needed,
+                    "Total Samples": majority_size + minority_size + synthetic_needed,
+                    "Synthetic Samples": synthetic_needed,
+                    "Information Loss": "None"
+                }
+            
+            # Display comparison table
+            if results:
+                df_comparison = pd.DataFrame(results).T
+                st.dataframe(df_comparison)
+                
+                # Recommendations
+                st.subheader("Recommendations")
+                if majority_size > 5 * minority_size:
+                    st.warning("⚠️ High imbalance detected. Consider combining techniques (e.g., SMOTE + slight undersampling)")
+                
+                if "Undersampling" in results and int(results["Undersampling"]["Information Loss"].replace('%', '')) > 50:
+                    st.warning("⚠️ Undersampling would lose >50% of data. Consider oversampling or SMOTE instead")
+                
+                if synthetic_needed > minority_size * 5:
+                    st.warning("⚠️ SMOTE would create many synthetic samples. Risk of unrealistic data. Consider combining with other techniques")
+
+        st.text_area("Document your technique selection and rationale:", 
+                     placeholder="Example: Given our 85-15 imbalance and small minority group (n=150), we'll use SMOTE to generate realistic synthetic samples, combined with slight undersampling of the majority to reach 70-30 balance.", 
+                     key="comparison_conclusion")
+    # --- Combined Pipeline Section ---
+    st.markdown("---")
+    st.subheader("🔗 Complete Bias Mitigation Pipeline")
+    
+    st.code("""
+# Complete bias mitigation pipeline combining multiple techniques
+def complete_bias_mitigation_pipeline(X, y, sensitive_attr, strategy='balanced'):
+    \"\"\"
+    Complete pipeline for bias mitigation using multiple techniques
+    \"\"\"
+    from sklearn.model_selection import train_test_split
+    from sklearn.metrics import classification_report
+    
+    # Step 1: Analyze current bias
+    print("=== BIAS ANALYSIS ===")
+    analyze_bias(X, y, sensitive_attr)
+    
+    # Step 2: Apply SMOTE for synthetic generation
+    print("=== APPLYING SMOTE ===")
+    smote = SMOTE(sampling_strategy='minority', random_state=42)
+    X_balanced, y_balanced = smote.fit_resample(X, y)
+    
+    print(f"Original distribution: {Counter(y)}")
+    print(f"After SMOTE: {Counter(y_balanced)}")
+    
+    # Step 3: Calculate and apply sample weights for remaining imbalance
+    print("=== CALCULATING WEIGHTS ===")
+    weights = compute_class_weight('balanced', 
+                                  classes=np.unique(y_balanced), 
+                                  y=y_balanced)
+    sample_weights = np.array([weights[label] for label in y_balanced])
+    
+    # Step 4: Train model with weights
+    print("=== TRAINING MODEL ===")
+    model = LogisticRegression(random_state=42)
+    model.fit(X_balanced, y_balanced, sample_weight=sample_weights)
+    
+    # Step 5: Validate fairness
+    print("=== FAIRNESS VALIDATION ===")
+    X_test_bal, _, y_test_bal, _ = train_test_split(X_balanced, y_balanced, 
+                                                   test_size=0.2, random_state=42)
+    validate_fairness(model, X_test_bal, y_test_bal, sensitive_attr)
+    
+    return model, X_balanced, y_balanced
+
+def analyze_bias(X, y, sensitive_attr):
+    \"\"\"Analyze current bias in the dataset\"\"\"
+    unique_groups = np.unique(sensitive_attr)
+    
+    for group in unique_groups:
+        group_mask = sensitive_attr == group
+        group_positive_rate = np.mean(y[group_mask])
+        print(f"Group {group}: {np.sum(group_mask)} samples, "
+              f"{group_positive_rate:.2%} positive rate")
+
+def validate_fairness(model, X_test, y_test, sensitive_attr):
+    \"\"\"Validate fairness metrics after mitigation\"\"\"
+    predictions = model.predict(X_test)
+    
+    unique_groups = np.unique(sensitive_attr)
+    
+    print("\\n=== FAIRNESS METRICS ===")
+    tprs = []
+    fprs = []
+    
+    for group in unique_groups:
+        group_mask = sensitive_attr == group
+        group_y_true = y_test[group_mask]
+        group_y_pred = predictions[group_mask]
+        
+        # Calculate TPR and FPR
+        tp = np.sum((group_y_true == 1) & (group_y_pred == 1))
+        fn = np.sum((group_y_true == 1) & (group_y_pred == 0))
+        fp = np.sum((group_y_true == 0) & (group_y_pred == 1))
+        tn = np.sum((group_y_true == 0) & (group_y_pred == 0))
+        
+        tpr = tp / (tp + fn) if (tp + fn) > 0 else 0
+        fpr = fp / (fp + tn) if (fp + tn) > 0 else 0
+        
+        tprs.append(tpr)
+        fprs.append(fpr)
+        
+        print(f"Group {group}: TPR={tpr:.3f}, FPR={fpr:.3f}")
+    
+    # Calculate fairness metrics
+    tpr_diff = max(tprs) - min(tprs)
+    fpr_diff = max(fprs) - min(fprs)
+    
+    print(f"\\nTPR Difference: {tpr_diff:.3f}")
+    print(f"FPR Difference: {fpr_diff:.3f}")
+    
+    if tpr_diff < 0.1 and fpr_diff < 0.1:
+        print("✅ Good fairness achieved!")
+    else:
+        print("⚠️ Significant fairness gaps remain")
+
+# Usage example
+if __name__ == "__main__":
+    # Load your data
+    # X, y, sensitive_attr = load_your_data()
+    
+    # Apply complete pipeline
+    fair_model, X_fair, y_fair = complete_bias_mitigation_pipeline(X, y, sensitive_attr)
+        """, language="python")
+        
+        st.text_area("Apply to your case: How would you adapt SMOTE for your specific data type?", 
+                     placeholder="Example: For our tabular medical data, we'll use SMOTE with k=5 neighbors and focus on generating synthetic samples for rare disease cases, ensuring clinical realism by constraining feature ranges.", 
+                     key="smote_plan")
+
+    # --- Report Generation ---
+    st.markdown("---")
+    st.header("Generate Bias Mitigation Report")
+    if st.button("Generate Bias Mitigation Report", key="gen_bias_mit_report"):
+        report_data = {
+            "Resampling Strategy": {
+                "Selected Approach": st.session_state.get('resample_plan', 'Not completed'),
+            },
+            "Reweighting Strategy": {
+                "Implementation Plan": st.session_state.get('reweight_plan', 'Not completed'),
+            },
+            "Data Augmentation": {
+                "Augmentation Strategy": st.session_state.get('augment_plan', 'Not completed'),
+            },
+            "SMOTE Application": {
+                "SMOTE Adaptation": st.session_state.get('smote_plan', 'Not completed'),
+            },
+            "Technique Comparison": {
+                "Selection Rationale": st.session_state.get('comparison_conclusion', 'Not completed'),
+            }
+        }
+        
+        report_md = "# Bias Mitigation Techniques Report\n\n"
+        for section, content in report_data.items():
+            report_md += f"## {section}\n"
+            for key, value in content.items():
+                report_md += f"**{key}:**\n{value}\n\n"
+        
+        st.session_state.bias_mit_report_md = report_md
+        st.success("✅ Bias Mitigation Report generated!")
+
+    if 'bias_mit_report_md' in st.session_state and st.session_state.bias_mit_report_md:
+        st.subheader("Report Preview")
+        st.markdown(st.session_state.bias_mit_report_md)
+        st.download_button(
+            label="Download Bias Mitigation Report",
+            data=st.session_state.bias_mit_report_md,
+            file_name="bias_mitigation_report.md",
+            mime="text/markdown"
+        )
+        
 
 #======================================================================
 # --- FAIRNESS INTERVENTION PLAYBOOK ---
@@ -460,10 +1162,10 @@ def preprocessing_fairness_toolkit():
         (e.g., too salty), you adjust them before cooking to ensure the final dish is balanced.
         """)
 
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7,tab8= st.tabs([
         "Representation Analysis", "Correlation Detection", "Label Quality", 
         "Re-weighting and Re-sampling", "Transformation", "Data Generation", 
-        "🌍 Intersectionality"
+        "🌍 Intersectionality","🔧 Bias Mitigation Techniques"
     ])
 
     # TAB 1: Representation Analysis
@@ -667,7 +1369,170 @@ def preprocessing_fairness_toolkit():
             st.info("El grupo 'Mujeres B (Intersección)' estaba severamente subrepresentado. Al aplicar un sobremuestreo específico para este subgrupo, ayudamos al modelo a aprender sus patrones sin distorsionar el resto de los datos.")
         
         st.text_area("Aplica a tu caso: ¿Qué subgrupos interseccionales están subrepresentados en tus datos y qué estrategia de re-muestreo/re-ponderación estratificada podrías usar?", key="p_inter")
+    with tab8:
+        st.subheader("Integrated Bias Mitigation Techniques")
+        st.info("Apply specific bias mitigation techniques with interactive examples and code templates.")
+                # Technique selector
+        technique = st.selectbox(
+            "Select bias mitigation technique:",
+            ["Oversampling", "Undersampling", "Reweighting", "SMOTE", "Data Augmentation"],
+            key="bias_mit_selector"
+        )
+        if technique == "Oversampling":
+            st.markdown("### Oversampling Implementation")
+            st.code("""
+# Oversampling for your preprocessing pipeline
+def preprocessing_oversampling(data, target_col, protected_attr):
+    results = {}
+    # Analyze by protected attribute
+    for group in data[protected_attr].unique():
+        group_data = data[data[protected_attr] == group]
+        
+        # Separate majority and minority within group
+        majority_class = group_data[target_col].mode()[0]
+        majority = group_data[group_data[target_col] == majority_class]
+        minority = group_data[group_data[target_col] != majority_class]
+        
+        # Oversample minority
+        if len(minority) > 0:
+            minority_upsampled = resample(minority,
+                                        replace=True,
+                                        n_samples=len(majority),
+                                        random_state=42)
+            results[group] = pd.concat([majority, minority_upsampled])
+    
+    return pd.concat(results.values(), ignore_index=True)
+            """, language="python")
+        
+        elif technique == "SMOTE":
+            st.markdown("### SMOTE for Preprocessing")
+            st.code("""
+# SMOTE integration in preprocessing
+def preprocessing_smote(X, y, sensitive_features):
+    # Apply SMOTE while preserving sensitive attribute information
+    smote = SMOTE(random_state=42, k_neighbors=5)
+    
+    # Get original sensitive feature mapping
+    sensitive_mapping = dict(zip(range(len(X)), sensitive_features))
+    
+    # Apply SMOTE
+    X_resampled, y_resampled = smote.fit_resample(X, y)
+    
+    # Reconstruct sensitive features for new samples
+    # (This is a simplified approach - in practice, you'd need more sophisticated mapping)
+    n_original = len(X)
+    n_synthetic = len(X_resampled) - n_original
+    
+    # For synthetic samples, assign sensitive attributes based on nearest neighbors
+    sensitive_resampled = list(sensitive_features)
+    for i in range(n_synthetic):
+        # Find closest original sample
+        synthetic_sample = X_resampled[n_original + i]
+        distances = np.linalg.norm(X - synthetic_sample, axis=1)
+        closest_idx = np.argmin(distances)
+        sensitive_resampled.append(sensitive_features[closest_idx])
+    
+    return X_resampled, y_resampled, np.array(sensitive_resampled)
+            """, language="python")
+        
+        # Integration with existing workflow
+        st.markdown("### Integration with Existing Preprocessing Workflow")
+        st.text_area(
+            "How will you integrate this technique with your existing preprocessing steps?",
+            placeholder="Example: 1. First apply correlation analysis to identify proxies. 2. Then use SMOTE to balance underrepresented intersectional groups. 3. Finally apply reweighting for fine-tuning. 4. Validate using fairness metrics.",
+            key=f"integration_{technique.lower()}"
+        )
 
+# ==================================================================
+# COMPLETE INTEGRATION FUNCTION
+# ==================================================================
+
+def complete_integration_example():
+    """Complete example showing how all components work together"""
+    st.header("🎯 Complete Integration Example")
+    st.info("This example shows how the bias mitigation techniques integrate with your existing audit and intervention playbooks.")
+    
+    st.markdown("""
+    ## Integration Workflow
+    
+    ### Phase 1: Audit (Using existing audit playbook)
+    1. **Historical Context Assessment** → Identify domain-specific bias patterns
+    2. **Fairness Definition Selection** → Choose appropriate fairness criteria
+    3. **Bias Source Identification** → Locate where bias enters the system
+    4. **Comprehensive Fairness Metrics** → Establish measurement framework
+    
+    ### Phase 2: Data Analysis (Using bias mitigation techniques)
+    5. **Dataset Analysis** → Apply representation analysis and correlation detection
+    6. **Bias Quantification** → Measure imbalances and identify mitigation needs
+    
+    ### Phase 3: Mitigation (Using intervention playbook + new techniques)
+    7. **Pre-processing** → Apply resampling, reweighting, SMOTE, or augmentation
+    8. **In-processing** → Use fairness constraints during training
+    9. **Post-processing** → Adjust thresholds and calibration
+    
+    ### Phase 4: Validation
+    10. **Fairness Validation** → Measure improvement using established metrics
+    11. **Intersectional Analysis** → Ensure fairness across subgroups
+    12. **Monitoring Setup** → Establish ongoing fairness monitoring
+    """)
+    
+    st.code("""
+# Complete integration pipeline
+def integrated_fairness_pipeline(data_path, config):
+    # Phase 1: Audit
+    audit_results = run_fairness_audit(data_path, config)
+    
+    # Phase 2: Load and analyze data
+    X, y, sensitive_attr = load_data(data_path)
+    bias_analysis = analyze_dataset_bias(X, y, sensitive_attr)
+    
+    # Phase 3: Apply mitigation based on audit results
+    if audit_results['requires_resampling']:
+        if bias_analysis['imbalance_ratio'] > 5:
+            # High imbalance - use SMOTE
+            X, y, sensitive_attr = preprocessing_smote(X, y, sensitive_attr)
+        else:
+            # Moderate imbalance - use oversampling
+            X, y = apply_oversampling(X, y)
+    
+    if audit_results['requires_reweighting']:
+        sample_weights = apply_reweighting(X, y)
+    else:
+        sample_weights = None
+    
+    # Phase 4: Train with fairness constraints
+    model = train_fair_model(X, y, sensitive_attr, 
+                           fairness_def=audit_results['selected_fairness_def'],
+                           sample_weight=sample_weights)
+    
+    # Phase 5: Post-process if needed
+    if audit_results['requires_post_processing']:
+        model = apply_threshold_optimization(model, X, y, sensitive_attr)
+    
+    # Phase 6: Validate
+    fairness_metrics = validate_complete_fairness(model, X, y, sensitive_attr)
+    
+    return model, fairness_metrics
+
+def run_fairness_audit(data_path, config):
+    """Run the audit playbook programmatically"""
+    # Historical context assessment
+    hca_results = assess_historical_context(config['domain'])
+    
+    # Fairness definition selection
+    fairness_def = select_fairness_definition(hca_results, config['use_case'])
+    
+    # Bias source identification
+    bias_sources = identify_bias_sources(data_path, hca_results)
+    
+    return {
+        'selected_fairness_def': fairness_def,
+        'bias_sources': bias_sources,
+        'requires_resampling': 'representation_bias' in bias_sources,
+        'requires_reweighting': 'measurement_bias' in bias_sources,
+        'requires_post_processing': 'deployment_bias' in bias_sources
+    }
+    """, language="python")
 
     # --- Report Section ---
     st.markdown("---")
@@ -1087,7 +1952,7 @@ def intervention_playbook():
     st.sidebar.title("Intervention Playbook Navigation")
     selection = st.sidebar.radio(
         "Go to:",
-        ["Main Playbook", "Causal Toolkit", "Pre-processing Toolkit", "In-processing Toolkit", "Post-processing Toolkit"],
+        ["Main Playbook", "Causal Toolkit", "Pre-processing Toolkit", "In-processing Toolkit", "Post-processing Toolkit","Bias Mitigation Techniques"],
         key="intervention_nav"
     )
     
@@ -1118,7 +1983,68 @@ def intervention_playbook():
     
     elif selection == "Post-processing Toolkit":
         postprocessing_fairness_toolkit()
+    elif selection == "Bias Mitigation Techniques":
+        bias_mitigation_techniques_toolkit()
+    elif playbook_choice == "Complete Integration Example":
+        complete_integration_example()
 
+
+def enhanced_preprocessing_with_bias_mitigation():
+    """Enhanced version of your preprocessing toolkit with integrated bias mitigation"""
+    st.header("🧪 Enhanced Pre-processing with Bias Mitigation")
+    
+    # Add bias mitigation techniques as a core component
+    with st.expander("🔧 Quick Bias Mitigation Assessment"):
+        st.write("Quick assessment to determine which bias mitigation technique to apply")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            dataset_size = st.selectbox("Dataset size", ["Small (<1K)", "Medium (1K-10K)", "Large (>10K)"])
+            imbalance_ratio = st.selectbox("Imbalance ratio", ["Low (<2:1)", "Medium (2:1-5:1)", "High (>5:1)"])
+        
+        with col2:
+            data_type = st.selectbox("Data type", ["Tabular", "Images", "Text", "Mixed"])
+            quality_concern = st.selectbox("Main quality concern", ["Representation", "Label bias", "Proxy variables"])
+        
+        # Recommendation logic
+        recommendations = []
+        if imbalance_ratio == "High (>5:1)":
+            if dataset_size == "Small (<1K)":
+                recommendations.append("SMOTE - Good for small, highly imbalanced datasets")
+            else:
+                recommendations.append("Oversampling + Reweighting - Effective for large imbalanced datasets")
+        elif imbalance_ratio == "Medium (2:1-5:1)":
+            recommendations.append("Reweighting - Simple and effective for moderate imbalance")
+        
+        if data_type == "Images":
+            recommendations.append("Data Augmentation - Ideal for image data")
+        elif data_type == "Text":
+            recommendations.append("Text Augmentation - Paraphrasing and back-translation")
+        
+        if quality_concern == "Proxy variables":
+            recommendations.append("Feature Transformation - Remove problematic correlations")
+        
+        if recommendations:
+            st.success("Recommended techniques:")
+            for rec in recommendations:
+                st.write(f"• {rec}")
+
+# ==================================================================
+# INTEGRATION HELPER FUNCTIONS
+# ==================================================================
+
+def create_integrated_workflow():
+    """Helper function to create integrated workflow"""
+    st.markdown("""
+    ### How to Use This Integration
+    
+    1. **Start with Audit Playbook** → Understand your bias landscape
+    2. **Apply Bias Mitigation Techniques** → Address data-level issues
+    3. **Use Intervention Playbook** → Apply algorithmic solutions
+    4. **Monitor with Comprehensive Metrics** → Ensure ongoing fairness
+    
+    Each component feeds into the next, creating a comprehensive approach to AI fairness.
+    """)
 
 #======================================================================
 # --- FAIRNESS AUDIT PLAYBOOK ---
@@ -1404,15 +2330,17 @@ def audit_playbook():
 
 
 # --- NAVEGACIÓN PRINCIPAL ---
-st.sidebar.title("Selección de Playbook")
+st.sidebar.title("Playbook Selection")
 playbook_choice = st.sidebar.selectbox(
-    "Elige el playbook que quieres usar:",
-    ["Fairness Audit Playbook", "Fairness Intervention Playbook"]
+    "Choose the toolkit you want to use:",
+    ["Fairness Audit Playbook", "Fairness Intervention Playbook","Bias Mitigation Techniques","Complete Integration Example" ]
 )
 
 st.title(playbook_choice)
 
 if playbook_choice == "Fairness Audit Playbook":
-    audit_playbook() 
-else:
-    intervention_playbook()
+    audit_playbook()
+elif playbook_choice == "Fairness Intervention Playbook":
+    intervention_playbook()     
+elif playbook_choice == "Bias Mitigation Techniques":
+    bias_mitigation_techniques_toolkit()
