@@ -1477,8 +1477,8 @@ def complete_integration_example():
     """)
     
     st.code("""
-# Complete integration pipeline
-def integrated_fairness_pipeline(data_path, config):
+    # Complete integration pipeline
+    def integrated_fairness_pipeline(data_path, config):
     # Phase 1: Audit
     audit_results = run_fairness_audit(data_path, config)
     
