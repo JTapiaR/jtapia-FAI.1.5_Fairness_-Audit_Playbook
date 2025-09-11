@@ -6,15 +6,3 @@ imbalanced-learn
 seaborn
 matplotlib
 tensorflow
-fairlearn
-graphviz
-plotly
-uuid
-datetime
-torch 
-flask 
-joblib
-plotly-express
-imblearn
-altair
-groq
