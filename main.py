@@ -3,7 +3,7 @@ import json
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from plotly.subplots import make_subplots
+#from plotly.subplots import make_subplots
 import plotly.express as px
 from sklearn.linear_model import LogisticRegression
 from sklearn.isotonic import IsotonicRegression
